@@ -59,10 +59,11 @@ ESS
 #center variables 
 library(robumeta)
 new.data1$TMS.center <- group.center(new.data1$TMS.mean, new.data1$ID) 
-#run model of change of TMS over time. 
-Ran.Slopes <- lmer(TMS.center ~ 1 + DATE + (1 + DATE |ID), data = new.data1,REML = TRUE)
-summary(Ran.Slopes)
-summ(Ran.Slopes)
+#run model of change of TMS over time.
+
+#Ran.Slopes <- lmer(TMS.center ~ 1 + DATE + (1 + DATE |ID), data = new.data1,REML = TRUE)
+#summary(Ran.Slopes)
+#summ(Ran.Slopes)
 
 
 ```
