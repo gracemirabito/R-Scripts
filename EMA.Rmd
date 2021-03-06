@@ -1,5 +1,5 @@
 ---
-title: "EMA, Grazia Mirabito"
+title: "EMA, Grazia Mirabito-"
 output:
   word_document: default
   html_document: default
