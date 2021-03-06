@@ -1,0 +1,75 @@
+---
+title: "EMA, Grazia Mirabito"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+#import packages
+library (ggplot2)
+library(dplyr)
+library(psych)
+library(plyr)
+library(doBy)
+library(lme4)
+library(jtools)
+
+#import data
+data <- readxl::read_xlsx("~/Desktop/Aggregating-EMA/Long-Format.xlsx")
+
+#recodedata
+data$PhysicalActivity<- recode(data$PhysicalActivity, "YES"= 1, "NO"= 2)
+
+#look at stats before aggregating
+#describe(data)
+
+#parsing the timestamp string to just have the date mm/dd
+data$DATE <- substr(data$TIMESTAMP, 1, 10)
+
+#sort new data and aggregate #getting average of scores by date and id 
+new.data1 <- summaryBy(GROUP + TMS + Curiousity + Decentering + STRESSOR + PROMIS + PWB + Rumination + SLEEP + PhysicalActivity + FORMAL + INFORMAL ~ DATE + ID, data=data, FUN=mean, na.rm=T)
+
+#make date numeric and not a string
+new.data1$DATE <- as.Date(new.data1$DATE, "%m/%d/%Y")
+
+describe(new.data1)
+#exporting file
+library("writexl")
+#write_xlsx(new.data1,"~/Desktop/average-Long-Format.xlsx")
+```
+```{r}
+#visualize data
+Mindfulness <- lmer(TMS.mean ~ 1 + (1 |ID), data = new.data1,REML = TRUE)
+summary(Mindfulness)
+summ(Mindfulness)
+
+#ICC from output 
+ICC <- 0.73
+DE <- 1 + ((31-1) * ICC)
+DE
+#compute effective sample size
+ESS<- 2283/DE
+ESS
+```
+**in the empty model of time on mindfulness, the ICC = 0.73, DE= 22.9, ESS= 99 from 119... multilevel modelling is necessary** 
+
+```{r}
+#center variables 
+library(robumeta)
+new.data1$TMS.center <- group.center(new.data1$TMS.mean, new.data1$ID) 
+#run model of change of TMS over time. 
+Ran.Slopes <- lmer(TMS.center ~ 1 + DATE + (1 + DATE |ID), data = new.data1,REML = TRUE)
+summary(Ran.Slopes)
+summ(Ran.Slopes)
+
+
+```
+
+
+
+
+
+
+
