@@ -1,0 +1,144 @@
+---
+title: "Sleep-Analysis"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library (ggplot2)
+library(dplyr)
+library(psych)
+library(plyr)
+library(doBy)
+library(lme4)
+library(nlme)
+library(jtools)
+library(broom.mixed)
+#cleaned data in excel to get day of study numbers 
+#importing new data 
+EMA <- readxl::read_xlsx("~/Desktop/Fall-2021/Thesis/Aggregating-EMA/EMA-DATA-PREFINAL.xlsx")
+#recode group to 0 and 1 
+#0= control 1= intervention
+EMA$GROUP.mean <- recode(EMA$GROUP.mean, "1"=0 , "2"=1 )
+#reode day to start with 0-34
+EMA$TIME <- (EMA$DAY-1)
+EMA$ID <- substr(EMA$ID, 13, 15)
+as.numeric(EMA$ID)
+EMA$PROMIS<- round(EMA$PROMIS.mean)
+EMA$STRESSOR<- round(EMA$STRESSOR.mean)
+EMA$PWB <- round(EMA$PWB.mean)
+EMA$Rumination <- round (EMA$Rumination.mean)
+EMA$GROUP <- round(EMA$GROUP.mean)
+#subset
+EMA.subset <- subset.data.frame(EMA, TIME>=7)
+EMA.subset$TIME2 <- (EMA.subset$TIME-7)
+EMA.tx<- subset.data.frame(EMA.subset, GROUP==1)
+EMA.control<- subset.data.frame(EMA.subset, GROUP==0)
+```
+
+
+```{r Sleep in TX and Control}
+#no auto corr
+sleep.model<- lme(SLEEP.mean ~ 1 + TIME2*GROUP , data=EMA.subset, random= ~ 1+  TIME2| ID, na.action=na.exclude)
+summary(sleep.model)
+
+#NLME
+sleep.nlme<- lme(SLEEP.mean ~ 1 + TIME2*GROUP , data=EMA.subset, random= ~ 1+  TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(sleep.nlme)
+
+anova(sleep.model, sleep.nlme)
+tidy(sleep.model)
+#plot SLEEP.mean
+ggplot(data=EMA.subset, aes(x=TIME2, y=SLEEP.mean, group=factor(GROUP), colour="gray"), legend=TRUE) +
+  geom_smooth(aes(group=ID), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray") +
+  geom_smooth(data=EMA.control, aes(x=TIME2, y=SLEEP.mean), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="blue", show.legend= TRUE) +
+  geom_smooth(data=EMA.tx, aes(x=TIME2, y=SLEEP.mean), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red", show.legend= TRUE) +
+  xlab("Time") + ylab("Sleep") +
+  theme_classic() +
+  theme(axis.title=element_text(size=25),
+        axis.text=element_text(size=25),
+        plot.title=element_text(size=25, hjust=.5)) +
+  ggtitle("Sleep")
+```
+
+
+
+```{r Rumination in TX }
+#only in tx group
+#NLME
+sleep.tx.nlme1 <- lme(SLEEP.mean ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, na.action=na.exclude)
+summary(sleep.tx.nlme1)
+
+sleep.tx.nlme <- lme(SLEEP.mean ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(sleep.tx.nlme)
+
+anova(sleep.tx.nlme1, sleep.tx.nlme)
+
+tidy(sleep.tx.nlme)
+#plot just tx rumination
+ggplot(data=EMA.tx, aes(x=TIME2, y=SLEEP.mean, group=factor(ID), colour="gray"), legend=FALSE) + geom_smooth(method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray40") +
+  geom_smooth(aes(group=1), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  xlab("Time") + ylab("Sleep") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Sleep over Time in TX")
+#control 
+ggplot(data=EMA.control, aes(x=TIME2, y=SLEEP.mean, group=factor(ID), colour="gray"), legend=FALSE) + geom_smooth(method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray40") +
+  geom_smooth(aes(group=1), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  xlab("Time") + ylab("Sleep") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Sleep over Time in Control")
+```
+
+```{r}
+#doing only 100% completed cases
+
+sleep.subset <- readxl::read_xlsx("~/Desktop/Aggregating-EMA/EMA-DATA-subset-sleep.xlsx")
+sleep.subset1 <- subset.data.frame(sleep.subset, TIME>=7)
+sleep.subset1$TIME2 <- (sleep.subset1$TIME-7)
+as.numeric(sleep.subset1$...5)
+as.numeric(sleep.subset$ID)
+
+
+new.sleep<-summaryBy(...5 ~ ID, data= sleep.subset1, FUN=sum, na.rm=T)
+new.sleep.subset <- subset.data.frame(new.sleep, ...5.sum == 27)
+
+#get the sleep data from ema on only variables selected above
+
+sleep.complete.pre <- subset.data.frame(EMA.subset, select= c(ID, GROUP, SLEEP.mean, TIME2))
+  
+sleep.complete.pre2 <- subset.data.frame(sleep.complete.pre, !is.na(SLEEP.mean))
+
+sleep.complete<- sleep.complete.pre2[sleep.complete.pre2$ID %in% c( 11, 12, 122, 14, 45, 68, 79, 90),]
+
+sleep.complete.nlme <- lme(SLEEP.mean ~ 1 + TIME2*GROUP , data=sleep.complete, random= ~ 1 + TIME2| ID, na.action=na.exclude)
+summary(sleep.complete.nlme)
+
+sleep.complete.nlme1 <- lme(SLEEP.mean ~ 1 + TIME2*GROUP , data=sleep.complete, random= ~ 1 + TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(sleep.complete.nlme1)
+
+anova(sleep.complete.nlme, sleep.complete.nlme1)
+```
+
+``` {r polynomial}
+EMA.tx$TIMEQ <- EMA.tx$TIME2^2
+#NLME
+#linear
+sleep.tx.auto <- lme(SLEEP.mean ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, method= "ML", correlation= corAR1(), na.action=na.exclude)
+
+#quadratic
+sleep.tx.auto1 <- lme(SLEEP.mean ~ 1 + TIME2 + TIMEQ, data=EMA.tx, random= ~ 1 + TIME2| ID, method= "ML", correlation= corAR1(), na.action=na.exclude)
+
+anova(sleep.tx.auto, sleep.tx.auto1)
+
+summary(sleep.tx.auto)
+summary(sleep.tx.auto1)
+
+```

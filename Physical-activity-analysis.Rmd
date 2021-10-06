@@ -1,0 +1,191 @@
+---
+title: "Physical-Activity"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library (ggplot2)
+library(dplyr)
+library(psych)
+library(plyr)
+library(doBy)
+library(lme4)
+library(nlme)
+library(jtools)
+library(broom.mixed)
+#cleaned data in excel to get day of study numbers 
+#importing new data 
+EMA <- readxl::read_xlsx("~/Desktop/Fall-2021/Thesis/Aggregating-EMA/EMA-DATA-PREFINAL.xlsx")
+#recode group to 0 and 1 
+#0= control 1= intervention
+EMA$GROUP.mean <- recode(EMA$GROUP.mean, "1"=0 , "2"=1 )
+#reode day to start with 0-34
+EMA$TIME <- (EMA$DAY-1)
+EMA$ID <- substr(EMA$ID, 13, 15)
+as.numeric(EMA$ID)
+EMA$PROMIS<- round(EMA$PROMIS.mean)
+EMA$STRESSOR<- round(EMA$STRESSOR.mean)
+EMA$PWB <- round(EMA$PWB.mean)
+EMA$Rumination <- round (EMA$Rumination.mean)
+EMA$GROUP <- round(EMA$GROUP.mean)
+EMA$PA <- round(EMA$PhysicalActivity.mean)
+#subset
+EMA.subset <- subset.data.frame(EMA, TIME>=7)
+EMA.subset$TIME2 <- (EMA.subset$TIME-7)
+EMA.subset$PA2 <- EMA.subset$PA
+EMA.subset$PA2<- recode(EMA.subset$PA2, "1"=0, "2"=1)
+EMA.tx<- subset.data.frame(EMA.subset, GROUP==1)
+EMA.control<- subset.data.frame(EMA.subset, GROUP==0)
+
+```
+
+
+```{r Tumination in TX and Control}
+#nlme no autocorr
+PA.model<- lme(PA ~ 1 + TIME2*GROUP , data=EMA.subset, random= ~ 1+  TIME2| ID, na.action=na.exclude)
+summary(PA.model)
+
+#nlme with auto corr
+PA.nlme<- lme(PA ~ 1 + TIME2*GROUP , data=EMA.subset, random= ~ 1+  TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(PA.nlme)
+
+anova(PA.model, PA.nlme)
+
+tidy(PA.nlme)
+#plot Rumination
+ggplot(data=EMA.subset, aes(x=TIME2, y=PA2, group=factor(GROUP), colour="gray"), legend=TRUE) +
+  geom_smooth(aes(group=ID), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray") +
+  geom_smooth(data=EMA.control, aes(x=TIME2, y=PA2), method=loess, se=FALSE, fullrange=FALSE, lty=1, size=2, color="blue", show.legend= TRUE) +
+  geom_smooth(data=EMA.tx, aes(x=TIME2, y=PA2), method=loess, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red", show.legend= TRUE) +
+  xlab("Time") + ylab("Physical Activity") +
+  theme_classic() +
+  theme(axis.title=element_text(size=25),
+        axis.text=element_text(size=25),
+        plot.title=element_text(size=25, hjust=.5)) +
+  ggtitle("Physical Activity")
+```
+
+
+
+```{r Rumination in TX }
+#only in tx group
+#no autocorr
+pa.tx <- lme(PA ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, na.action=na.exclude)
+summary(pa.tx)
+
+#nlme with autocorr
+pa.tx.nlme <- lme(PA ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(pa.tx.nlme)
+
+anova(pa.tx, pa.tx.nlme)
+
+#just control 
+pa.control <- lme(PA ~ 1 + TIME2 , data=EMA.control, random= ~ 1 + TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(pa.control)
+
+library("broom.mixed")
+
+tidy(pa.tx.nlme)
+tidy(pa.control)
+
+#plot just tx rumination
+ggplot(data=EMA.tx, aes(x=TIME2, y=PA2, group=factor(ID), colour="gray"), legend=FALSE) + geom_smooth(method='glm', se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray40") +
+  geom_smooth(aes(group=1), method='loess', se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  xlab("Time") + ylab("Physical Activity") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Physical Activity over Time in TX")
+#control
+ggplot(data=EMA.control, aes(x=TIME2, y=PA, group=factor(ID), colour="gray"), legend=FALSE) + geom_smooth(method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray40") +
+  geom_smooth(aes(group=1), method=loess, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  xlab("Time") + ylab("Physical Activity") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Physical Activity over Time in Control")
+```
+
+```{r}
+#doing only 100% completed cases
+#pulling in subsetted data, and convering time to 0-27 and then making numeric values 
+pa.subset <- readxl::read_xlsx("~/Desktop/Thesis/Aggregating-EMA/EMA-DATA-subset-pa.xlsx")
+pa.subset1 <- subset.data.frame(pa.subset, DAY>=7)
+pa.subset1$TIME2 <- (pa.subset1$DAY-7)
+as.numeric(pa.subset1$...5)
+as.numeric(pa.subset1$ID)
+
+#figuring out who has all values 
+new.pa<-summaryBy(...5 ~ ID, data= pa.subset1, FUN=sum, na.rm=T)
+new.pa.subset <- subset.data.frame(new.pa, ...5.sum == 27)
+
+#get the sleep data from ema on only variables selected above
+
+pa.complete.pre <- subset.data.frame(EMA.subset, select= c(ID, GROUP, PhysicalActivity.mean, TIME2))
+  
+pa.complete.pre2 <- subset.data.frame(pa.complete.pre, !is.na(PhysicalActivity.mean))
+
+pa.complete<- pa.complete.pre2[pa.complete.pre2$ID %in% c( 10, 105, 30, 49, 50, 52, 58, 90),]
+
+pa.complete.nlme <- lme(PhysicalActivity.mean ~ 1 + TIME2*GROUP , data=pa.complete, random= ~ 1 + TIME2| ID)
+summary(pa.complete.nlme)
+
+pa.complete.nlme1 <- lme(PhysicalActivity.mean ~ 1 + TIME2*GROUP , data=pa.complete, random= ~ 1 + TIME2| ID, correlation= corAR1())
+summary(pa.complete.nlme1)
+
+anova(pa.complete.nlme, pa.complete.nlme1)
+```
+
+
+``` {r polynomial}
+EMA.tx$TIMEQ <- EMA.tx$TIME2^2
+EMA.tx$TIMEC <- EMA.tx$TIME2^3 
+
+#NLME
+#linear
+pa.tx.auto <- lme(PhysicalActivity.mean ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, method= "ML", correlation= corAR1(), na.action=na.exclude)
+
+#quadratic
+pa.tx.auto1 <- lme(PhysicalActivity.mean ~ 1 + TIME2 + TIMEQ, data=EMA.tx, random= ~ 1 + TIME2| ID, method= "ML", correlation= corAR1(), na.action=na.exclude)
+
+pa.tx.auto2 <- lme(PhysicalActivity.mean ~ 1 + TIME2 + TIMEQ + TIMEC, data=EMA.tx, random= ~ 1 + TIME2| ID, method= "ML", correlation= corAR1(), na.action=na.exclude)
+
+anova(pa.tx.auto, pa.tx.auto1, pa.tx.auto2)
+
+summary(pa.tx.auto)
+summary(pa.tx.auto1)
+summary(pa.tx.auto2)
+
+
+```
+
+```{r}
+#logistic regression 
+#PA.nlme<- lme(PA ~ 1 + TIME2*GROUP , data=EMA.subset, random= ~ 1+  TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+
+EMA.subset$PA2 <- EMA.subset$PA
+EMA.subset$PA2<- recode(EMA.subset$PA2, "1"=0, "2"=1)
+PA.log <- glmer(PA2 ~ 1 + TIME2*GROUP + (1+ TIME2|ID), family= binomial, control=glmerControl(optimizer="bobyqa"), data= EMA.subset, na.action=na.exclude)
+#summary(PA.log)
+tidy(PA.log)
+
+
+EMA.tx$PA2 <- EMA.tx$PA
+EMA.tx$PA2<- recode(EMA.tx$PA2, "1"=0, "2"=1)
+#linear
+pa.tx.auto.log1 <- glmer(PA2 ~ 1 + TIME2 + (1 +TIME2|ID), family= binomial, control=glmerControl(optimizer="bobyqa"), data= EMA.tx, na.action=na.exclude)
+
+pa.tx.auto.log2 <- glmer(PA2 ~ 1 + TIME2 + TIMEQ + (1+ TIME2 + TIMEQ|ID), family= binomial, control=glmerControl(optimizer="bobyqa"), data= EMA.tx, na.action=na.exclude)
+
+#
+anova(pa.tx.auto.log1, pa.tx.auto.log2)
+
+tidy(pa.tx.auto.log1)
+```
+
+

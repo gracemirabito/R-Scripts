@@ -1,0 +1,85 @@
+---
+title: "day by day change average"
+output:
+  word_document: default
+  html_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library (ggplot2)
+library(dplyr)
+library(psych)
+library(plyr)
+library(doBy)
+library(lme4)
+library(jtools)
+library(tidyr)
+#cleaned data in excel to get day of study numbers
+
+#importing new data 
+EMA <- readxl::read_xlsx("~/Desktop/Aggregating-EMA/EMA-DATA-PREFINAL.xlsx")
+
+#recode group to 0 and 1 
+#0= control 1= intervention
+EMA$GROUP.mean <- recode(EMA$GROUP.mean, "1"=0 , "2"=1 )
+
+#reode day to start with 0-34
+EMA$TIME <- (EMA$DAY-1)
+EMA$ID <- substr(EMA$ID, 13, 15)
+as.numeric(EMA$ID)
+EMA$PROMIS<- round(EMA$PROMIS.mean)
+EMA$STRESSOR<- round(EMA$STRESSOR.mean)
+EMA$PWB <- round(EMA$PWB.mean)
+EMA$Rumination <- round (EMA$Rumination.mean)
+EMA$GROUP <- round(EMA$GROUP.mean)
+EMA$PA <- round(EMA$PhysicalActivity.mean)
+
+#subset
+EMA.subset <- subset.data.frame(EMA, TIME>=7)
+EMA.subset$TIME2 <- (EMA.subset$TIME-7)
+EMA.tx<- subset.data.frame(EMA.subset, GROUP==1)
+EMA.control<- subset.data.frame(EMA.subset, GROUP==0)
+
+#subset by averaging data per day for intervention 
+daybyday.data <- summaryBy(TMS.mean + Curiousity.mean + Decentering.mean + STRESSOR + PROMIS + PWB + Rumination + SLEEP.mean + PA + FORMAL.mean + INFORMAL.mean ~ TIME2 + GROUP, data=EMA.subset, FUN=mean, na.rm=T)
+
+new.daybyday <- subset(daybyday.data, GROUP <= 1)
+```
+
+
+```{r}
+#decentering 
+ggplot(data = new.daybyday, aes(x = TIME2, group=GROUP), color=factor(GROUP)) +
+  geom_line(aes(y=Decentering.mean.mean, color=factor(GROUP)))
+
+decenter.day.avg <- summaryBy(Decentering.mean.mean ~ TIME2 + GROUP, data=new.daybyday, FUN=mean, na.rm=T)
+
+#curiousity
+ggplot(data = new.daybyday, aes(x = TIME2, group=GROUP), color=factor(GROUP)) +
+  geom_line(aes(y=Curiousity.mean.mean, color=factor(GROUP)))
+
+#stress
+ggplot(data = new.daybyday, aes(x = TIME2, group=GROUP), color=factor(GROUP)) +
+  geom_line(aes(y=STRESSOR.mean, color=factor(GROUP)))
+
+#promis 
+ggplot(data = new.daybyday, aes(x = TIME2, group=GROUP), color=factor(GROUP)) +
+  geom_line(aes(y=PROMIS.mean, color=factor(GROUP)))
+
+#PWB
+ggplot(data = new.daybyday, aes(x = TIME2, group=GROUP), color=factor(GROUP)) +
+  geom_line(aes(y=PWB.mean, color=factor(GROUP)))
+
+#Rumination 
+ggplot(data = new.daybyday, aes(x = TIME2, group=GROUP), color=factor(GROUP)) +
+  geom_line(aes(y=Rumination.mean, color=factor(GROUP)))
+
+#Sleep 
+ggplot(data = new.daybyday, aes(x = TIME2, group=GROUP), color=factor(GROUP)) +
+  geom_line(aes(y=SLEEP.mean.mean, color=factor(GROUP)))
+
+#PA
+ggplot(data = new.daybyday, aes(x = TIME2, group=GROUP), color=factor(GROUP)) +
+  geom_line(aes(y=PA.mean, color=factor(GROUP)))
+
+```

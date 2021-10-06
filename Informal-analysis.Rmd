@@ -1,0 +1,107 @@
+---
+title: "Informal-Qual-Analysis"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library (ggplot2)
+library(dplyr)
+library(psych)
+library(plyr)
+library(doBy)
+library(lme4)
+library(nlme)
+library(jtools)
+library(broom.mixed)
+#cleaned data in excel to get day of study numbers 
+#importing new data 
+EMA <- readxl::read_xlsx("~/Desktop/Fall-2021/Thesis/Aggregating-EMA/EMA-DATA-PREFINAL.xlsx")
+#recode group to 0 and 1 
+#0= control 1= intervention
+EMA$GROUP.mean <- recode(EMA$GROUP.mean, "1"=0 , "2"=1 )
+#reode day to start with 0-34
+EMA$TIME <- (EMA$DAY-1)
+EMA$ID <- substr(EMA$ID, 13, 15)
+as.numeric(EMA$ID)
+EMA$PROMIS<- round(EMA$PROMIS.mean)
+EMA$STRESSOR<- round(EMA$STRESSOR.mean)
+EMA$PWB <- round(EMA$PWB.mean)
+EMA$Rumination <- round (EMA$Rumination.mean)
+EMA$GROUP <- round(EMA$GROUP.mean)
+#subset
+EMA.subset <- subset.data.frame(EMA, TIME>=7)
+EMA.subset$TIME2 <- (EMA.subset$TIME-7)
+EMA.tx<- subset.data.frame(EMA.subset, GROUP==1)
+EMA.control<- subset.data.frame(EMA.subset, GROUP==0)
+```
+
+
+```{r Infomral in TX }
+#only in tx group
+#no autocorr
+inform.tx <- lme(INFORMAL.mean ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, na.action=na.exclude)
+summary(inform.tx)
+
+#nlme with autocorr
+inform.tx.nlme <- lme(INFORMAL.mean ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(inform.tx.nlme)
+
+anova(inform.tx, inform.tx.nlme)
+
+tidy(inform.tx.nlme)
+#plot just tx rumination
+ggplot(data=EMA.tx, aes(x=TIME2, y=INFORMAL.mean), legend=FALSE) + geom_smooth(method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray40") +
+  geom_smooth(aes(group=1), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  xlab("Time") + ylab("Informal Practice Quality") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Informal Practice Quality over Time in TX")
+
+
+ggplot(data=EMA.tx, aes(x=TIME2, y=INFORMAL.mean), legend=TRUE) +
+  geom_smooth(data=EMA.tx, aes(x=TIME2, y=INFORMAL.mean), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="blue", show.legend= TRUE) +
+  #geom_smooth(data=EMA.tx, aes(x=TIME2, y=FORMAL.mean), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red", show.legend= TRUE) +
+ 
+  xlab("Time") + ylab("practice") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Practice quality and Time")
+
+
+
+
+ggplot(data=EMA.subset, aes(x=TIME2, y=INFORMAL.mean, group=factor(GROUP), colour="gray"), legend=TRUE) +
+  geom_smooth(aes(group=ID), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray") +
+  geom_smooth(data=EMA.tx, aes(x=TIME2, y=INFORMAL.mean), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="blue") +
+  xlab("Time") + ylab("Practice Quality") + scale_y_continuous(breaks = seq(3, 9, by=3))+ 
+  theme_classic() +
+  theme(axis.title=element_text(size=25),
+        axis.text=element_text(size=25),
+        plot.title=element_text(size=25, hjust=.5)) +
+  ggtitle("Informal Practice Quality")
+```
+
+
+``` {r polynomial}
+EMA.tx$TIMEQ <- EMA.tx$TIME2^2
+#NLME
+#linear
+inform.tx.auto <- lme(INFORMAL.mean ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, method= "ML", correlation= corAR1(), na.action=na.exclude)
+
+#quadratic
+inform.tx.auto1 <- lme(INFORMAL.mean ~ 1 + TIME2 + TIMEQ, data=EMA.tx, random= ~ 1 + TIME2| ID, method= "ML", correlation= corAR1(), na.action=na.exclude)
+
+anova(inform.tx.auto, inform.tx.auto1)
+
+summary(inform.tx.auto)
+summary(inform.tx.auto1)
+
+
+```

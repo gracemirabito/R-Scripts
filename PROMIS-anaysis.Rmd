@@ -1,0 +1,129 @@
+---
+title: "PROMIS"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library (ggplot2)
+library(dplyr)
+library(psych)
+library(plyr)
+library(doBy)
+library(lme4)
+library(nlme)
+library(jtools)
+library(broom.mixed)
+#cleaned data in excel to get day of study numbers 
+#importing new data 
+EMA <- readxl::read_xlsx("~/Desktop/Fall-2021/Thesis/Aggregating-EMA/EMA-DATA-PREFINAL.xlsx")
+#recode group to 0 and 1 
+#0= control 1= intervention
+EMA$GROUP.mean <- recode(EMA$GROUP.mean, "1"=0 , "2"=1 )
+#reode day to start with 0-34
+EMA$TIME <- (EMA$DAY-1)
+EMA$ID <- substr(EMA$ID, 13, 15)
+as.numeric(EMA$ID)
+EMA$PROMIS<- round(EMA$PROMIS.mean)
+EMA$STRESSOR<- round(EMA$STRESSOR.mean)
+EMA$PWB <- round(EMA$PWB.mean)
+EMA$Rumination <- round (EMA$Rumination.mean)
+EMA$GROUP <- round(EMA$GROUP.mean)
+#subset
+EMA.subset <- subset.data.frame(EMA, TIME>=7)
+EMA.subset$TIME2 <- (EMA.subset$TIME-7)
+EMA.tx<- subset.data.frame(EMA.subset, GROUP==1)
+EMA.control<- subset.data.frame(EMA.subset, GROUP==0)
+```
+
+
+```{r }
+#nlme no autocorr
+PROMIS.model<- lme(PROMIS ~ 1 + TIME2*GROUP , data=EMA.subset, random= ~ 1+  TIME2| ID, na.action=na.exclude)
+summary(PROMIS.model)
+
+#nlme with auto corr
+PROMIS.nlme<- lme(PROMIS ~ 1 + TIME2*GROUP , data=EMA.subset, random= ~ 1+  TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(PROMIS.nlme)
+
+PROMIS.nlme.ML<- lme(PROMIS ~ 1 + TIME2*GROUP , data=EMA.subset, random= ~ 1+  TIME2| ID, correlation= corAR1(), method= "ML", na.action=na.exclude)
+summary(PROMIS.nlme.ML)
+anova(PROMIS.model, PROMIS.nlme)
+
+tidy(PROMIS.nlme)
+#plot Stressor
+ggplot(data=EMA.subset, aes(x=TIME2, y=PROMIS, group=factor(GROUP), colour="gray"), legend=TRUE) +
+  geom_smooth(aes(group=ID), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray") +
+  geom_smooth(data=EMA.control, aes(x=TIME2, y=PROMIS), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="blue", show.legend= TRUE) +
+  geom_smooth(data=EMA.tx, aes(x=TIME2, y=PROMIS), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red", show.legend= TRUE) +
+  xlab("Time") + ylab("Depression") +
+  theme_classic() +
+  theme(axis.title=element_text(size=25),
+        axis.text=element_text(size=25),
+        plot.title=element_text(size=25, hjust=.5)) +
+  ggtitle("Depression")
+```
+
+
+
+```{r Rumination in TX }
+#only in tx group
+#no autocorr
+promis.tx <- lme(PROMIS ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, na.action=na.exclude)
+summary(promis.tx)
+
+#nlme with autocorr
+promis.tx.nlme <- lme(PROMIS ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(promis.tx.nlme)
+
+anova(promis.tx, promis.tx.nlme)
+
+#just control 
+promis.control <- lme(PROMIS ~ 1 + TIME2 , data=EMA.control, random= ~ 1 + TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(promis.control)
+
+library("broom.mixed")
+
+tidy(promis.tx.nlme)
+
+
+
+#plot just tx rumination
+ggplot(data=EMA.tx, aes(x=TIME2, y=PROMIS, group=factor(ID), colour="gray"), legend=FALSE) + geom_smooth(method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray40") +
+  geom_smooth(aes(group=1), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  xlab("Time") + ylab("Depression") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Depression over Time in TX")
+#control 
+ggplot(data=EMA.control, aes(x=TIME2, y=PROMIS, group=factor(ID), colour="gray"), legend=FALSE) + geom_smooth(method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray40") +
+  geom_smooth(aes(group=1), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  xlab("Time") + ylab("Depression") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Depression over Time in Control")
+```
+
+
+``` {r polynomial}
+EMA.tx$TIMEQ <- EMA.tx$TIME2^2
+#NLME
+#linear
+promis.tx.auto <- lme(PROMIS ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, method= "ML", correlation= corAR1(), na.action=na.exclude)
+
+#quadratic
+promis.tx.auto1 <- lme(PROMIS ~ 1 + TIME2 + TIMEQ, data=EMA.tx, random= ~ 1 + TIME2| ID, method= "ML", correlation= corAR1(), na.action=na.exclude)
+
+
+anova(promis.tx.auto, promis.tx.auto1)
+
+summary(promis.tx.auto)
+summary(promis.tx.auto1)
+
+```

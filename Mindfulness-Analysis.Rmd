@@ -1,0 +1,200 @@
+---
+title: "MINDFULNESS"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library (ggplot2)
+library(dplyr)
+library(psych)
+library(plyr)
+library(doBy)
+library(lme4)
+library(nlme)
+library(jtools)
+library("broom.mixed")
+#cleaned data in excel to get day of study numbers 
+#importing new data 
+EMA <- readxl::read_xlsx("~/Desktop//Fall-2021/Thesis/Aggregating-EMA/EMA-DATA-PREFINAL.xlsx")
+#recode group to 0 and 1 
+#0= control 1= intervention
+EMA$GROUP.mean <- recode(EMA$GROUP.mean, "1"=0 , "2"=1 )
+#reode day to start with 0-34
+EMA$TIME <- (EMA$DAY-1)
+EMA$ID <- substr(EMA$ID, 13, 15)
+as.numeric(EMA$ID)
+EMA$PROMIS<- round(EMA$PROMIS.mean)
+EMA$STRESSOR<- round(EMA$STRESSOR.mean)
+EMA$PWB <- round(EMA$PWB.mean)
+EMA$Rumination <- round (EMA$Rumination.mean)
+EMA$GROUP <- round(EMA$GROUP.mean)
+#subset
+EMA.subset <- subset.data.frame(EMA, TIME>=7)
+EMA.subset$TIME2 <- (EMA.subset$TIME-7)
+EMA.tx<- subset.data.frame(EMA.subset, GROUP==1)
+EMA.control<- subset.data.frame(EMA.subset, GROUP==0)
+```
+
+
+```{r}
+#nlme no autocorr
+curiosity.model<- lme(Curiousity.mean ~ 1 + TIME2*GROUP , data=EMA.subset, random= ~ 1+  TIME2| ID, na.action=na.exclude)
+summary(curiosity.model)
+
+#nlme with auto corr
+curiousity.nlme<- lme(Curiousity.mean ~ 1 + TIME2*GROUP , data=EMA.subset, random= ~ 1+  TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(curiousity.nlme)
+
+anova(curiosity.model, curiousity.nlme)
+
+#nlme no autocorr
+decentering.model<- lme(Decentering.mean ~ 1 + TIME2*GROUP , data=EMA.subset, random= ~ 1+  TIME2| ID, na.action=na.exclude)
+summary(decentering.model)
+
+#nlme with auto corr
+decentering.nlme<- lme(Decentering.mean ~ 1 + TIME2*GROUP , data=EMA.subset, random= ~ 1+  TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(decentering.nlme)
+
+anova(decentering.model, decentering.nlme)
+
+#plot TMS Subscales
+
+
+ggplot(data=EMA.subset, aes(x=TIME2, y=Curiousity.mean, group=factor(GROUP), colour="gray"), legend=TRUE) +
+  geom_smooth(aes(group=ID), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray") +
+  geom_smooth(data=EMA.control, aes(x=TIME2, y=Curiousity.mean), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  geom_smooth(data=EMA.tx, aes(x=TIME2, y=Curiousity.mean), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="blue") +
+  xlab("Time") + ylab("Mindfulness") +
+  theme_classic() +
+  theme(axis.title=element_text(size=25),
+        axis.text=element_text(size=25),
+        plot.title=element_text(size=25, hjust=.5)) +
+  ggtitle("Curiosity")
+
+ggplot(data=EMA.subset, aes(x=TIME2, y=Curiousity.mean, group=factor(ID), color="gray"), legend=FALSE) +
+  geom_smooth(method = lm, se= FALSE, na.rm= TRUE) +
+  #geom_smooth(data=EMA.control, aes(x=TIME2, y=Curiousity.mean), method=glm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="blue", show.legend= TRUE) +
+  #geom_smooth(data=EMA.tx, aes(x=TIME2, y=Curiousity.mean), method=glm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red", show.legend= TRUE) +
+  xlab("Time") + ylab("Curiosity") +
+  theme_classic() +
+  theme(axis.title=element_text(size=25),
+        axis.text=element_text(size=25),
+        plot.title=element_text(size=25, hjust=.5)) +
+  ggtitle("Curiosity")
+
+
+ggplot(data=EMA.subset, aes(x=TIME2, y=Decentering.mean, group=factor(GROUP), colour="gray"), legend=TRUE) +
+  geom_smooth(data= EMA.tx,aes(group=ID), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray") +
+  geom_smooth(data= EMA.control ,aes(group=ID), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.25, color="gray") +
+  geom_smooth(data=EMA.control, aes(x=TIME2, y=Decentering.mean), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  geom_smooth(data=EMA.tx, aes(x=TIME2, y=Decentering.mean), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="blue") +
+  xlab("Time") + ylab("Mindfulness") +
+  theme_classic() +
+  theme(axis.title=element_text(size=25),
+        axis.text=element_text(size=25),
+        plot.title=element_text(size=25, hjust=.5)) +
+  ggtitle("Decentering")
+
+```
+```{r}
+tidy(curiousity.nlme)
+tidy(decentering.nlme)
+```
+
+```{r}
+#only in tx group
+#no autocorr
+decentering.tx <- lme(Decentering.mean ~ 1 + TIME2, data=EMA.tx, random= ~ 1 + TIME2| ID, na.action=na.exclude)
+summary(decentering.tx)
+
+#nlme with autocorr
+decentering.tx.nlme <- lme(Decentering.mean ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(decentering.tx.nlme)
+
+anova(decentering.tx, decentering.tx.nlme)
+
+#no autocorr
+curiousity.tx <- lme(Curiousity.mean ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, na.action=na.exclude)
+summary(curiousity.tx)
+
+#nlme with autocorr
+curiousity.tx.nlme <- lme(Curiousity.mean ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, correlation= corAR1(), na.action=na.exclude)
+summary(curiousity.tx.nlme)
+
+anova(curiousity.tx, curiousity.tx.nlme)
+
+tidy(curiousity.tx.nlme)
+tidy(decentering.tx.nlme)
+#plot just tx group decentering
+ggplot(data=EMA.tx, aes(x=TIME2, y=Decentering.mean, group=factor(ID), colour="gray"), legend=FALSE) + geom_smooth(method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray40") +
+  geom_smooth(aes(group=1), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  xlab("Time") + ylab("Decentering") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Decentering over Time in TX")
+#plot just tx group curiousity 
+ggplot(data=EMA.tx, aes(x=TIME2, y=Curiousity.mean, group=factor(ID), colour="gray"), legend=FALSE) + geom_smooth(method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray40") +
+  geom_smooth(aes(group=1), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  xlab("Time") + ylab("Curiousity") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Curiousity over Time in TX")
+#plot just control group decentering
+ggplot(data=EMA.control, aes(x=TIME2, y=Decentering.mean, group=factor(ID), colour="gray"), legend=FALSE) + geom_smooth(method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray40") +
+  geom_smooth(aes(group=1), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  xlab("Time") + ylab("Decentering") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Decentering over Time in control")
+#plot just tx group curiousity 
+ggplot(data=EMA.control, aes(x=TIME2, y=Curiousity.mean, group=factor(ID), colour="gray"), legend=FALSE) + geom_smooth(method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray40") +
+  geom_smooth(aes(group=1), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  xlab("Time") + ylab("Curiousity") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Curiousity over Time in Control")
+#plot just control group decentering
+```
+
+
+
+
+```{r}
+#polynomial
+EMA.tx$TIMEQ <- EMA.tx$TIME2^2
+
+#NLME
+#linear
+decentering.tx.auto <- lme(Decentering.mean ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, method= "ML", correlation= corAR1(), na.action=na.exclude)
+
+#quadratic
+decentering.tx.auto1 <- lme(Decentering.mean ~ 1 + TIME2 + TIMEQ, data=EMA.tx, random= ~ 1 + TIME2| ID, method= "ML", correlation= corAR1(), na.action=na.exclude)
+
+anova(decentering.tx.auto, decentering.tx.auto1)
+
+summary(decentering.tx.auto)
+summary(decentering.tx.auto1)
+
+#linear
+curiousity.tx.auto <- lme(Curiousity.mean ~ 1 + TIME2 , data=EMA.tx, random= ~ 1 + TIME2| ID, method= "ML", correlation= corAR1(), na.action=na.exclude)
+
+#quadratic
+curiousity.tx.auto1 <- lme(Curiousity.mean ~ 1 + TIME2 + TIMEQ, data=EMA.tx, random= ~ 1 + TIME2| ID, method= "ML", correlation= corAR1(), na.action=na.exclude)
+
+anova(curiousity.tx.auto, curiousity.tx.auto1)
+
+summary(curiousity.tx.auto)
+summary(curiousity.tx.auto1)
+
+```
