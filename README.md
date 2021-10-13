@@ -1,0 +1,1 @@
+# R-Scripts This is a repository of all of the data analyses that I preformed on my Master's Thesis. This consists of multilevel linear growth moodels, multilevel moderated mediation models, and mutlileel moderated lagged mediation analyses. 
