@@ -40,10 +40,47 @@ describe(new.data1)
 library("writexl")
 #write_xlsx(new.data1,"~/Desktop/average-Long-Format.xlsx")
 ```
+
+``` {r, cronbach data cleaning}
+chron <- readxl::read_xlsx("~/Desktop/Aggregating-EMA/TOGETHER-EMA.xlsx")
+
+#getting the last data point for the morning survey 
+chron.new <- unique(chron$ID)
+a<-length(chron.new) 
+last <- c()
+for (i in 1:a) {
+  temp<-subset(chron, ID==chron.new[i])
+  if (dim(temp)[1] > 1) {
+    last.temp<-temp[dim(temp)[1],]
+  }
+  else {
+    last.temp<-temp
+  }
+  last<-rbind(last, last.temp)
+}
+
+as.data.frame(last)
+
+#getting the first data point for the morning survey 
+t.first <- chron[match(unique(chron$ID), chron$ID),]
+as.data.frame(t.first)
+
+#exporting 
+#write_xlsx(last,"~/Desktop/average-last.xlsx")
+#write_xlsx(t.first,"~/Desktop/average-first.xlsx")
+
+```
+
+
 ```{r, empty model}
 #cleaned data in excel to get day of study numbers 
 #importing new data 
 EMA <- readxl::read_xlsx("~/Desktop/Aggregating-EMA/FINAL-EMA-DATA.xlsx")
+#recode group to 0 and 1 
+#0= control 1= intervention
+EMA$GROUP.mean <- recode(EMA$GROUP.mean, "1"=0 , "2"=1 )
+#reode day to start with 0-34
+EMA$DAY2 <- (EMA$DAY-1)
 
 #visualize data
 #level 1== day 
@@ -92,7 +129,7 @@ summ(PA)
 ```{r, visualize data}
 #plot and visualize each outcome by running OLS for each... this is one option. second option using ggplot is in next section  
 #visualize TMS 
-OLS <- lmList(TMS.mean ~ DAY | ID , data= EMA)
+OLS <- lmList(TMS.mean ~ DAY2 | ID , data= EMA)
 OLS
 plot (EMA$DAY, EMA$TMS.mean) 
 for (i in 1:114){
@@ -100,7 +137,7 @@ for (i in 1:114){
 }
 
 #visualize curiosity 
-OLS1 <- lmList(Curiousity.mean ~ DAY | ID , data= EMA)
+OLS1 <- lmList(Curiousity.mean ~ DAY2 | ID , data= EMA)
 OLS1
 plot (EMA$DAY, EMA$Curiousity.mean) 
 for (i in 1:114){
@@ -108,7 +145,7 @@ for (i in 1:114){
 }
 
 #visualize Decentering 
-OLS2 <- lmList(Decentering.mean ~ DAY | ID , data= EMA)
+OLS2 <- lmList(Decentering.mean ~ DAY2 | ID , data= EMA)
 OLS2
 plot (EMA$DAY, EMA$Decentering.mean) 
 for (i in 1:114){
@@ -116,7 +153,7 @@ for (i in 1:114){
 }
 
 #visualizing stress
-OLS3 <- lmList(STRESSOR.mean ~ DAY | ID , data= EMA)
+OLS3 <- lmList(STRESSOR.mean ~ DAY2 | ID , data= EMA)
 OLS3
 plot (EMA$DAY, EMA$STRESSOR.mean) 
 for (i in 1:114){
@@ -124,7 +161,7 @@ for (i in 1:114){
 }
 
 #visualizing anxiety (promis)
-OLS4 <- lmList(PROMIS.mean ~ DAY | ID , data= EMA)
+OLS4 <- lmList(PROMIS.mean ~ DAY2 | ID , data= EMA)
 OLS4
 plot (EMA$DAY, EMA$PROMIS.mean) 
 for (i in 1:114){
@@ -132,7 +169,7 @@ for (i in 1:114){
 }
 
 #visualizing well being 
-OLS5 <- lmList(PWB.mean ~ DAY | ID , data= EMA)
+OLS5 <- lmList(PWB.mean ~ DAY2 | ID , data= EMA)
 OLS5
 plot (EMA$DAY, EMA$PWB.mean) 
 for (i in 1:114){
@@ -140,7 +177,7 @@ for (i in 1:114){
 }
 
 #viualizing rumination 
-OLS6 <- lmList(Rumination.mean ~ DAY | ID , data= EMA)
+OLS6 <- lmList(Rumination.mean ~ DAY2 | ID , data= EMA)
 OLS6
 plot (EMA$DAY, EMA$Rumination.mean) 
 for (i in 1:114){
@@ -148,7 +185,7 @@ for (i in 1:114){
 }
 
 #sleep 
-OLS7 <- lmList(SLEEP.mean ~ DAY | ID , data= EMA)
+OLS7 <- lmList(SLEEP.mean ~ DAY2 | ID , data= EMA)
 OLS7
 plot (EMA$DAY, EMA$SLEEP.mean) 
 for (i in 1:5){
@@ -156,13 +193,14 @@ for (i in 1:5){
 }
 
 #PA 
-OLS8 <- lmList(PhysicalActivity.mean ~ DAY | ID , data= EMA)
+OLS8 <- lmList(PhysicalActivity.mean ~ DAY2 | ID , data= EMA)
 OLS8
 plot (EMA$DAY, EMA$PhysicalActivity.mean) 
 for (i in 1:5){
   abline(a = coef(OLS8)[i,1], b = coef(OLS8)[i,2])
 }
 ```
+
 
 ```{r, visualize with ggplot}
 

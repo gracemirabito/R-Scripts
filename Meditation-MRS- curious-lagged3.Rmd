@@ -1,0 +1,528 @@
+---
+title: "Mediation-part1"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library (ggplot2)
+library(dplyr)
+library(psych)
+library(plyr)
+library(doBy)
+library(lme4)
+library(nlme)
+library(jtools)
+library("broom.mixed")
+library(misty)
+#cleaned data in excel to get day of study numbers 
+#importing new data 
+EMA <- readxl::read_xlsx("~/Desktop/Thesis/Aggregating-EMA/EMA-DATA-PREFINAL.xlsx")
+#recode group to 0 and 1 
+#0= control 1= intervention
+EMA$GROUP.mean <- recode(EMA$GROUP.mean, "1"=0 , "2"=1 )
+#reode day to start with 0-34
+EMA$TIME <- (EMA$DAY-1)
+EMA$ID <- substr(EMA$ID, 13, 15)
+as.numeric(EMA$ID)
+EMA$PROMIS<- round(EMA$PROMIS.mean)
+EMA$STRESSOR<- round(EMA$STRESSOR.mean)
+EMA$PWB <- round(EMA$PWB.mean)
+EMA$Rumination <- round (EMA$Rumination.mean)
+EMA$GROUP <- round(EMA$GROUP.mean)
+#subset
+EMA.subset <- subset.data.frame(EMA, TIME>=7)
+EMA.subset$TIME2 <- (EMA.subset$TIME-7)
+EMA.tx<- subset.data.frame(EMA.subset, GROUP==1)
+EMA.control<- subset.data.frame(EMA.subset, GROUP==0)
+```
+
+```{r}
+#clean data and import packages
+library(ggplot2); theme_set(theme_bw()) #for data viz
+library(lme4) #for multilevel models
+library(nlme) #for multilevel models
+library(psych) #for describing data
+library(tidyr); library(dplyr) #for manipulating data 
+library(bmlm) #for Bayesian 1-1-1 mediation
+library(reshape2)
+library(broom) #for converting results summary to df
+# Examine first few rows of the data set
+head(EMA.subset, 30)
+
+#part 1
+#x= mindfulness 
+#y= stress or well-being or mood 
+#m= rumination 
+
+#part 2 
+#x= mindfulness 
+#y= stress or well-being or mood 
+#m= sleep
+
+#part 3
+#x= mindfulness 
+#y= stress or well-being or mood 
+#m= exercise
+
+
+#need to center variables within a person
+EMA.subset$TMS.C<- center(EMA.subset$TMS.mean, type = "CWC", group = EMA.subset$ID)
+EMA.subset$Curiousity.C<- center(EMA.subset$Curiousity.mean, type = "CWC", group = EMA.subset$ID)
+#used to check mean of ID
+#describeBy(EMA.subset$TIME2, group= EMA.subset$ID==10)
+EMA.subset$Decentering.C<- center(EMA.subset$Decentering.mean, type = "CWC", group = EMA.subset$ID)
+EMA.subset$PROMIS.C<- center(EMA.subset$PROMIS, type = "CWC", group = EMA.subset$ID)
+EMA.subset$Stress.C<- center(EMA.subset$STRESSOR, type = "CWC", group = EMA.subset$ID)
+EMA.subset$PWB.C<- center(EMA.subset$PWB, type = "CWC", group = EMA.subset$ID)
+EMA.subset$Rumination.C<- center(EMA.subset$Rumination, type = "CWC", group = EMA.subset$ID)
+EMA.subset$Sleep.C<- center(EMA.subset$SLEEP.mean, type = "CWC", group = EMA.subset$ID)
+EMA.subset$PhysicalActivity.C<- center(EMA.subset$PhysicalActivity.mean, type = "CWC", group = EMA.subset$ID)
+EMA.subset$Formal.C<- center(EMA.subset$FORMAL.mean, type = "CWC", group = EMA.subset$ID)
+EMA.subset$Informal.C<- center(EMA.subset$INFORMAL.mean, type = "CWC", group = EMA.subset$ID)
+EMA.subset$Time.C<- center(EMA.subset$TIME2, type = "CWC", group = EMA.subset$ID)
+
+
+#make x,y,m 
+#EMA.subset$X.M <- EMA.subset$Curiousity.C
+#EMA.subset$M.R <- EMA.subset$Rumination.C
+#EMA.subset$Y.W <- EMA.subset$PWB.C
+
+#variables of interest for part 1 
+vars <- c("TMS.C", "Curiousity.C", "Decentering.C", "Stress.C", "PWB.C", "PROMIS.C", "Rumination.C")
+#descriptives
+describe(EMA.subset[,vars])
+
+#PART 1 restructure for just mindfulness--> rumination --> stress
+MRS.data <- EMA.subset[,c("GROUP", "ID","TIME2","Time.C","Curiousity.C","Stress.C", "Rumination.C")]
+#look at  data set
+#head(MRS.data)
+#tail(MRS.data)
+
+#ordering the data set to sort by ID and Time to make sure lead functions sort correctly by group and timing. 
+MRS.data1<- MRS.data[order(MRS.data$ID, MRS.data$TIME2),]
+
+#create lead (day1 curiosity, predictis day 2 rumiantion and day 3 well-being)
+#creating lagged column for Ruminationi + 1 day and well-being + 2 days 
+MRS.data.redo <- MRS.data1 %>%                            # Add lagged column
+  group_by(ID) %>%
+  dplyr::mutate(Rumination.lag = dplyr::lead(Rumination.C, n = 2, default = NA), Stress.lag = dplyr::lead(Stress.C, n = 2, default = NA)) %>% 
+  as.data.frame()
+MRS.data.redo 
+
+#adding in the dummy coding variables with the lagged and centered variables required 
+
+MRS.data.redo$X.M <- MRS.data.redo$Curiousity.C
+MRS.data.redo$M.R <- MRS.data.redo$Rumination.lag
+MRS.data.redo$Y.W <- MRS.data.redo$Stress.lag
+
+#removing rumination and pwb to only leave the lagged variables in 
+df = subset(MRS.data.redo, select = -c(Rumination.C, Stress.C) )
+
+
+#melting the daya to use the dummy code double indicators
+datalong.part1 <- reshape2:: melt(data=df,
+                 id.vars=c("GROUP", "ID","TIME2","Time.C","Curiousity.C","Rumination.lag","Stress.lag","X.M"),
+                 na.rm=FALSE, variable.name="dv",
+                 value.name="z")
+#look at updated data set
+#head(datalong.part1)
+#tail(datalong.part1)
+
+#adding the double indicators 
+datalong.part1$dy <- ifelse(datalong.part1$dv=="Y.W", 1, 0)
+datalong.part1$dm <- ifelse(datalong.part1$dv=="M.R", 1, 0)
+datalong.part1$dvnum <- ifelse(datalong.part1$dv=="M.R", 1, 0)
+
+#reordering for convenience 
+datalong.part1 <- datalong.part1[order(datalong.part1$ID,datalong.part1$Time.C,datalong.part1$dm),]
+
+
+```
+
+
+```{r}
+# NEED TO RUN THE MODEL_LME.PART1 NO MODERATION FIRST !!!!!!!
+
+#meditation FIRST
+#x= mindfulness (fwkstrcw in Bolger)
+#y= stress (frediscw in Bolger)
+#m= rumination (fwkdiscw in Bolger)
+
+#lme mediation model
+model_lme.part1 <- lme(fixed = z ~ -1 + 
+                             dm + dm:Curiousity.C + dm:Time.C + #m as outcome
+                             dy + dy:Rumination.lag + dy:Curiousity.C + dy:Time.C, #y as outcome
+                  random = ~ -1  +  dm:Curiousity.C + dy:Rumination.lag + dy:Curiousity.C | ID, correlation= corAR1(),
+                  weights = varIdent(form = ~ 1 | dvnum), #separate sigma^{2}_{e} for each outcome
+                  data = datalong.part1,
+                  na.action = na.exclude,
+                  control = lmeControl(opt = "optim", maxIter = 200, msMaxIter = 200, niterEM = 50, msMaxEval = 400))
+
+summary(model_lme.part1)
+```
+
+Intercepts:
+	0.0000 = intercept in the m as outcome model (d_Mi: We expect this to be zero because we person-centered all the data)
+
+	0.0001 = intercept in the y as outcome model (d_Yi: We expect this to be zero (or extremely close) because we person-centered all the data)
+Effects on M (Rumination):
+	-0.095 = effect of x –> m (a: Mindfulness predicting Rumination) ***
+	-0.007 = effect of time –> m (time trend in Rumination) ***
+Effects on Y (Stress):
+	-0.35 = effect of m –> y (b: Rumination predicting Well Being) ***
+	0.124 = effect of x –> y (c’: Mindfulness predicting Stress, after adjusting for Rumination) ***
+	0.0096 = effect of time –> y (time trend in Stress) ***
+
+```{r}
+#analyzing the mediation. 
+#pulling out fixed effects info
+FE.med <- fixef(model_lme.part1)
+FE.med
+
+#making parameter objects
+a.med <- as.numeric(FE.med[3])
+a.med
+b.med <- as.numeric(FE.med[5])
+b.med
+cprime.med <- as.numeric(FE.med[6])
+cprime.med
+
+### Random Effects
+#pulling out random effects info
+VarCorr(model_lme.part1)
+
+#The *variance* of the *a* paths
+sig2_a <- as.numeric(VarCorr(model_lme.part1)["dm:Curiousity.C", "Variance"])
+sig2_a
+
+#variance of the *b* paths
+sig2_b <- as.numeric(VarCorr(model_lme.part1)["dy:Rumination.lag", "Variance"])
+sig2_b
+
+#variance of the *c* paths
+sig2_cprime <- as.numeric(VarCorr(model_lme.part1)["Curiousity.C:dy", "Variance"])
+sig2_cprime
+
+#The residual *variance* of the mediator variable, 
+
+sig2_em <- (1.00*as.numeric(VarCorr(model_lme.part1)["Residual", "StdDev"]))^2
+sig2_em
+
+#The residual *variance* of the outcome variable, 
+sig2_ey <- (0.6968058  *as.numeric(VarCorr(model_lme.part1)["Residual", "StdDev"]))^2
+sig2_ey
+
+#The *covariance* between the $a_{j}$ and $b_{j}$ paths 
+#We need to convert the correlation to a covariance, which we can by using a `cortocov` function. We can just feed in the correlation coefficient and the two variances, and it will return a covariance. 
+
+cortocov <- function (r, var1, var2) {
+  cov=r*((var1*var2)^0.5)
+  return(cov)
+}
+
+covajbj <- cortocov(r = as.numeric(VarCorr(model_lme.part1)["dy:Rumination.lag","Corr"]),
+         var1 = as.numeric(VarCorr(model_lme.part1)["dm:Curiousity.C","Variance"]),
+         var2 = as.numeric(VarCorr(model_lme.part1)["dy:Rumination.lag","Variance"]))
+
+#indirect effect (mediated effect)
+indirecteffect <- a.med*b.med + covajbj   
+indirecteffect
+
+#calculating c the total effect
+totaleffect <- cprime.med + a.med*b.med + covajbj 
+totaleffect
+
+#percent mediated
+percentmediated <- 100*(indirecteffect/totaleffect)  
+percentmediated
+
+#percent covariance
+percentcovariance <- 100*(covajbj/indirecteffect) 
+percentcovariance
+```
+
+```{r}
+#starting moderation set up 
+re <- data.frame(ranef(model_lme.part1))
+re$ID <- row.names(re)
+#get group in there
+group <- as.data.frame(datalong.part1$GROUP,datalong.part1$ID)
+names(group)[1] <- "GROUP"
+group$ID <- row.names(group)
+group.re <- summaryBy(GROUP ~ ID, data=group, FUN=mean, na.rm=T)
+names(group.re)[2] <- "GROUP"
+re$GROUP <- group.re$GROUP 
+re$GROUP <- recode(re$GROUP, "0"=-0.5 , "1"=0.5 )
+
+#don't think this line next is important? 
+#re <- re %>% arrange(dm.TMS.C)
+
+# add this new variable to the original data, resulting in a new dataframe, datalong2
+datalong2.part1 <- merge(datalong.part1, dplyr::select(re, ID, GROUP), by = "ID")
+#look at updated data set
+#head(datalong.part1)
+#tail(datalong.part1)
+
+#REDO for PART 1 restructure for mindfulness--> rumination --> well-being
+#REDO for PART 1 restructure for mindfulness--> rumination --> mood
+```
+
+```{r}
+#running moderation Model for Part 1 stress
+#part 1
+#x= mindfulness (fwkstrcw in Bolger)
+#y= stress (frediscw in Bolger)
+#m= rumination (fwkdiscw in Bolger)
+#lme mediation and moderation
+model_lme_mod.part2 <- lme(fixed = z ~ -1 + 
+                       # m as outcome
+                       dm + dm:Curiousity.C + dm:Time.C + 
+                       # add in group as main effect and moderator
+                       dm:GROUP.y + dm:Curiousity.C:GROUP.y + 
+                       
+                       # y as outcome
+                       dy + dy:Rumination.lag + dy:Curiousity.C + dy:Time.C +
+                       #  add in group as main effect and moderator
+                       dy:GROUP.y + dy:Rumination.lag:GROUP.y + dy:Curiousity.C:GROUP.y,
+                  random = ~ -1  +  dm:Curiousity.C + dy:Rumination.lag + dy:Curiousity.C | ID, 
+                  weights = varIdent(form = ~ 1 | dvnum), #separate sigma^{2}_{e} for each outcome
+                  data = datalong2.part1,
+                  na.action = na.exclude,
+                  control = lmeControl(opt = "optim", maxIter = 200, msMaxIter = 200, niterEM = 50, msMaxEval = 400))
+
+summary(model_lme_mod.part2)
+#lme mediation and moderation
+model_lme_mod.part1 <- lme(fixed = z ~ -1 + 
+                       # m as outcome
+                       dm + dm:Curiousity.C + dm:Time.C + 
+                       # add in group as main effect and moderator
+                       dm:GROUP.y + dm:Curiousity.C:GROUP.y + 
+                       
+                       # y as outcome
+                       dy + dy:Rumination.lag + dy:Curiousity.C + dy:Time.C +
+                       #  add in group as main effect and moderator
+                       dy:GROUP.y + dy:Rumination.lag:GROUP.y + dy:Curiousity.C:GROUP.y,
+                  random = ~ -1  +  dm:Curiousity.C + dy:Rumination.lag + dy:Curiousity.C | ID, correlation= corAR1(),
+                  weights = varIdent(form = ~ 1 | dvnum), #separate sigma^{2}_{e} for each outcome
+                  data = datalong2.part1,
+                  na.action = na.exclude,
+                  control = lmeControl(opt = "optim", maxIter = 200, msMaxIter = 200, niterEM = 50, msMaxEval = 400))
+
+summary(model_lme_mod.part1)
+anova(model_lme_mod.part2, model_lme_mod.part1)
+
+```
+
+
+#### Intercepts for moderation:
+
+* 0 = intercept in the `m` as outcome model ($d_{Mi}$: We expect this to be zero because we person-centered all the data)    
+
+* 0 = intercept in the `y` as outcome model ($d_{Yi}$: We expect this to be zero because we person-centered all the data)
+
+#### Effects on M (Rumination.C):
+
+* **`r round(lme4::fixef(model_lme_mod.part1)["dm:Curiousity.C"], 3)` = effect of x --> m (*a*: work stressors predicting work dissatisfaction across averaging conditions)**     
+
+* `r round(lme4::fixef(model_lme_mod.part1)["dm:Time.C"], 3)` = effect of time --> m (time trend in work dissatisfaction averaging across conditions)   
+
+* `r round(lme4::fixef(model_lme_mod.part1)["dm:GROUP.y"], 3)` = effect of treatment --> m 
+
+* **`r round(lme4::fixef(model_lme_mod.part1)["dm:Curiousity.C:GROUP.y"], 3)` = interaction of x and treatment --> m (moderation of *a*: differences in effect of work stressors predicting work dissatisfaction as a function of treatment )** 
+
+#### Effects on Y (Stress.C):
+
+* **`r round(lme4::fixef(model_lme_mod.part1)["dy:Rumination.C"], 3)` = effect of m --> y (*b*: work dissatisfaction predicting relationship dissatisfaction averaging across conditions)**    
+
+* **`r round(lme4::fixef(model_lme_mod.part1)["Curiousity.C:dy"], 3)` = effect of x --> y (*c'*: work stressors predicting relationship dissatisfaction, after adjusting for work dissatisfaction, averaging across conditions)** 
+
+* `r round(lme4::fixef(model_lme_mod.part1)["Time.C:dy"], 3)` = effect of time --> y (time trend in relationship dissatisfaction, averaging across conditions) 
+
+* `r round(lme4::fixef(model_lme_mod.part1)["GROUP.y:dy"], 3)` = effect of treatment --> y 
+
+* **`r round(lme4::fixef(model_lme_mod.part1)["Curiousity.C:GROUP.y:dy"], 3)` = interaction of x and treatment --> y (moderation of *c*: differences in effect of work stressors predicting relationship dissatisfaction as a function of treatment)** 
+
+* **`r round(lme4::fixef(model_lme_mod.part1)["GROUP.y:dy:Rumination.C"], 3)` = interaction of m and treatment --> y (moderation of *b*: differences in effect of work dissatisfaction predicting relationship dissatisfaction as a function of treatment)** 
+
+```{r}
+#for moderation 
+FE_mod <- lme4::fixef(model_lme_mod.part1)
+FE_mod
+```
+Let's put the parameters into named objects, as these will be useful later.
+```{r}
+
+#making parameter objects
+
+# mediation paths
+a_mod <- as.numeric(lme4::fixef(model_lme_mod.part1)["dm:Curiousity.C"])
+a_mod
+b_mod <- as.numeric(lme4::fixef(model_lme_mod.part1)["dy:Rumination.lag"])
+b_mod
+cprime_mod <- as.numeric(lme4::fixef(model_lme_mod.part1)["Curiousity.C:dy"])
+cprime_mod
+
+# moderation of mediation paths
+aXtreat_mod <- as.numeric(lme4::fixef(model_lme_mod.part1)["dm:Curiousity.C:GROUP.y"])
+aXtreat_mod
+bXtreat_mod <- as.numeric(lme4::fixef(model_lme_mod.part1)["GROUP.y:dy:Rumination.lag"])
+bXtreat_mod
+cprimeXtreat_mod <- as.numeric(lme4::fixef(model_lme_mod.part1)["Curiousity.C:GROUP.y:dy"])
+cprimeXtreat_mod
+```
+
+
+### Random Effects
+Random effects can be obtained using similar code above. Of particular interest, we will need the covariance of a and b that is left over after taking our moderator, `treat`, into account (i.e., their residual covariance).
+
+As before, we need to convert the correlation of these random effects to a covariance.
+```{r}
+cortocov <- function (r, var1, var2) {
+  cov=r*((var1*var2)^0.5)
+  return(cov)
+}
+covajbj_mod <- cortocov(r = as.numeric(VarCorr(model_lme_mod.part1)["dy:Rumination.lag","Corr"]),
+         var1 = as.numeric(VarCorr(model_lme_mod.part1)["dm:Curiousity.C","Variance"]),
+         var2 = as.numeric(VarCorr(model_lme_mod.part1)["dy:Rumination.lag","Variance"]))
+covajbj_mod
+```
+
+
+### Calculating mediated effect (e.g., indirect effect)  
+The indirect effect is again a combination of a*b + cov(ab), but this time we have moderation on both the a and b paths to account for. 
+
+#### Treatment Group (`treat = 1`)
+First, we compute the indirect effect for the average person in the **treatment** group. 
+```{r}
+treat_weight <- 0.5 #reflects effect coding of treat = +.5
+
+indirecteffect_treat_mod <- (a_mod + treat_weight*aXtreat_mod)*
+                            (b_mod + treat_weight*bXtreat_mod) +
+                              covajbj_mod   
+indirecteffect_treat_mod
+```
+
+#### Control Group (`treat = 0`)
+Next, we compute the indirect effect for the average person in the **control** group. 
+```{r}
+control_weight <- -0.5 #reflects effect coding of treat = -.5
+
+indirecteffect_control_mod <- (a_mod + control_weight*aXtreat_mod)*
+                              (b_mod + control_weight*bXtreat_mod) +
+                              covajbj_mod   
+indirecteffect_control_mod
+```
+
+
+#### Person-specific Mediation Estimates
+
+
+```{r}
+#get c 
+#make x,y,m 
+EMA.c <- df 
+EMA.c$X <- df$Curiousity.C
+EMA.c$M <- df$Stress.lag
+EMA.c$Y <- df$Rumination.lag
+
+
+#PART 1 restructure for just mindfulness--> rumination --> stress
+MRS.data2 <- EMA.c[,c("GROUP", "ID","TIME2","Time.C","Curiousity.C","Stress.lag", "Rumination.lag","X","M","Y")]
+#look at  data set
+#head(MRS.data)
+#tail(MRS.data)
+datalong.c <- melt(data=MRS.data2,
+               id.vars=c("GROUP", "ID","TIME2","Time.C","Curiousity.C","Stress.lag","Rumination.lag","X"),
+               na.rm=FALSE, variable.name="dv",
+               value.name="z")
+#look at updated data set
+#head(datalong.part1)
+#tail(datalong.part1)
+
+#adding the double indicators 
+datalong.c$dy <- ifelse(datalong.c$dv=="Y", 1, 0)
+datalong.c$dm <- ifelse(datalong.c$dv=="M", 1, 0)
+datalong.c$dvnum <- ifelse(datalong.c$dv=="M", 1, 0)
+
+#reordering for convenience 
+datalong.c <- datalong.c[order(datalong.c$ID,datalong.c$Time.C,datalong.c$dm),]
+
+```
+
+
+```{r}
+# NEED TO RUN THE MODEL_LME.PART1 NO MODERATION FIRST !!!!!!!
+
+#meditation FIRST
+#x= mindfulness (fwkstrcw in Bolger)
+#y= stress (frediscw in Bolger)
+#m= rumination (fwkdiscw in Bolger)
+
+#lme mediation model
+model_lme.c <- lme(fixed = z ~ -1 + 
+                             dm + dm:Curiousity.C + dm:Time.C + #m as outcome
+                             dy + dy:Stress.lag + dy:Curiousity.C + dy:Time.C, #y as outcome
+                  random = ~ -1  +  dm:Curiousity.C + dy:Stress.lag + dy:Curiousity.C | ID, 
+                  weights = varIdent(form = ~ 1 | dvnum), #separate sigma^{2}_{e} for each outcome
+                  data = datalong.c,
+                  na.action = na.exclude,
+                  control = lmeControl(opt = "optim", maxIter = 200, msMaxIter = 200, niterEM = 50, msMaxEval = 400))
+
+summary(model_lme.c)
+```
+
+```{r}
+#starting moderation set up 
+re <- data.frame(ranef(model_lme.c))
+re$ID <- row.names(re)
+#get group in there
+group2 <- as.data.frame(datalong.c$GROUP,datalong.c$ID)
+names(group2)[1] <- "GROUP"
+group2$ID <- row.names(group)
+group.re <- summaryBy(GROUP ~ ID, data=group2, FUN=mean, na.rm=T)
+names(group.re)[2] <- "GROUP"
+re$GROUP <- group.re$GROUP 
+re$GROUP <- recode(re$GROUP, "0"=-0.5 , "1"=0.5 )
+
+#don't think this line next is important? 
+#re <- re %>% arrange(dm.TMS.C)
+
+# add this new variable to the original data, resulting in a new dataframe, datalong2
+datalong.2.c <- merge(datalong.c, dplyr::select(re, ID, GROUP), by = "ID")
+#look at updated data set
+#head(datalong.part1)
+#tail(datalong.part1)
+
+#REDO for PART 1 restructure for mindfulness--> rumination --> well-being
+#REDO for PART 1 restructure for mindfulness--> rumination --> mood
+```
+
+```{r}
+#running moderation Model for Part 1 stress
+#part 1
+#x= mindfulness (fwkstrcw in Bolger)
+#y= stress (frediscw in Bolger)
+#m= rumination (fwkdiscw in Bolger)
+
+#lme mediation and moderation
+model_lme.c <- lme(fixed = z ~ -1 + 
+                       # m as outcome
+                       dm + dm:Curiousity.C + dm:Time.C + 
+                       # add in group as main effect and moderator
+                       dm:GROUP.y + dm:Curiousity.C:GROUP.y + 
+                       
+                       # y as outcome
+                       dy + dy:Stress.lag + dy:Curiousity.C + dy:Time.C +
+                       #  add in group as main effect and moderator
+                       dy:GROUP.y + dy:Stress.lag:GROUP.y + dy:Curiousity.C:GROUP.y,
+                  random = ~ -1  +  dm:Curiousity.C + dy:Stress.lag + dy:Curiousity.C | ID,
+                  weights = varIdent(form = ~ 1 | dvnum), #separate sigma^{2}_{e} for each outcome
+                  data = datalong.2.c,
+                  na.action = na.exclude)
+                  #control = lmeControl(opt = "optim", maxIter = 200, msMaxIter = 200, niterEM = 50, msMaxEval = 400))
+
+summary(model_lme.c)
+```

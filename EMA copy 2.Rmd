@@ -1,0 +1,387 @@
+---
+title: "EMA, Grazia Mirabito"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r, cleaning data}
+knitr::opts_chunk$set(echo = TRUE)
+#import packages
+library (ggplot2)
+library(dplyr)
+library(psych)
+library(plyr)
+library(doBy)
+library(lme4)
+library(jtools)
+
+#import data
+data <- readxl::read_xlsx("~/Desktop/Thesis/Aggregating-EMA/Long-Format.xlsx")
+
+#recodedata
+data$PhysicalActivity<- recode(data$PhysicalActivity, "YES"= 1, "NO"= 2)
+
+#look at stats before aggregating
+#describe(data)
+
+#parsing the timestamp string to just have the date mm/dd
+data$DATE <- substr(data$TIMESTAMP, 1, 10)
+
+#sort new data and aggregate #getting average of scores by date and id 
+new.data1 <- summaryBy(GROUP + TMS + Curiousity + Decentering + STRESSOR + PROMIS + PWB + Rumination + SLEEP + PhysicalActivity + FORMAL + INFORMAL ~ DATE + ID, data=data, FUN=mean, na.rm=T)
+
+#make date numeric and not a string
+new.data1$DATE <- as.Date(new.data1$DATE, "%m/%d/%Y")
+
+describe(new.data1)
+#exporting file
+library("writexl")
+#write_xlsx(new.data1,"~/Desktop/average-Long-Format.xlsx")
+```
+
+``` {r, cronbach data cleaning}
+chron <- readxl::read_xlsx("~/Desktop/Thesis/Aggregating-EMA/TOGETHER-EMA.xlsx")
+
+#getting the last data point for the morning survey 
+chron.new <- unique(chron$ID)
+a<-length(chron.new) 
+last <- c()
+for (i in 1:a) {
+  temp<-subset(chron, ID==chron.new[i])
+  if (dim(temp)[1] > 1) {
+    last.temp<-temp[dim(temp)[1],]
+  }
+  else {
+    last.temp<-temp
+  }
+  last<-rbind(last, last.temp)
+}
+
+as.data.frame(last)
+
+#getting the first data point for the morning survey 
+t.first <- chron[match(unique(chron$ID), chron$ID),]
+as.data.frame(t.first)
+
+#exporting 
+#write_xlsx(last,"~/Desktop/average-last.xlsx")
+#write_xlsx(t.first,"~/Desktop/average-first.xlsx")
+
+```
+
+
+```{r, empty model}
+#cleaned data in excel to get day of study numbers 
+#importing new data 
+EMA <- readxl::read_xlsx("~/Desktop/Thesis/Aggregating-EMA/EMA-DATA-PREFINAL.xlsx")
+#recode group to 0 and 1 
+#0= control 1= intervention
+EMA$GROUP.mean <- recode(EMA$GROUP.mean, "1"=0 , "2"=1 )
+#reode day to start with 0-34
+EMA$TIME <- (EMA$DAY-1)
+EMA$ID <- substr(EMA$ID, 13, 15)
+as.numeric(EMA$ID)
+EMA$PROMIS<- round(EMA$PROMIS.mean)
+EMA$STRESSOR<- round(EMA$STRESSOR.mean)
+EMA$PWB <- round(EMA$PWB.mean)
+EMA$Rumination <- round (EMA$Rumination.mean)
+EMA$GROUP <- round(EMA$GROUP.mean)
+#exporting 
+#write_xlsx(EMA,"~/Desktop/EMA-final.xlsx")
+#subset by averaging data per day for intervention 
+#daybyday.data <- summaryBy(TMS.mean + Curiousity.mean + Decentering.mean + STRESSOR + PROMIS + PWB + Rumination + SLEEP.mean + PA + FORMAL.mean + INFORMAL.mean ~ TIME2 + GROUP, data=EMA.subset, FUN=mean, na.rm=T)
+
+new.daybyday <- subset(daybyday.data, GROUP <= 1)
+```
+
+```{r}
+#compliance 
+compliance_stats <-  ddply(EMA.subset, "ID", summarize,
+                           num_days = length(unique(TIME2)),
+                           num_obs = length(ID))
+
+describe(compliance_stats)
+table(compliance_stats$num_days, useNA = "no")
+table(compliance_stats$num_obs, useNA = "no")
+#histogram
+ggplot(data = compliance_stats, aes(x = num_days)) +
+  geom_histogram(fill="white", color="black") + 
+  labs(x = "Number of Observations Completed")
+#280 data points missing out of 3135 
+```
+
+
+```{r}
+#all from session c in longitudinal folder. 
+#visualize for groups
+ggplot(data = EMA[which(EMA$ID < 20),],
+       aes(x = TIME, group=ID), color=factor(ID)) +
+  guides(color="none") + #to suppress guide
+  # first variable
+  geom_line(aes(y=TMS.mean, color=factor(ID)))
+
+#plot more variables for one person 
+ggplot(data = EMA[which(EMA$ID == 105), ],
+       aes(x = TIME, group= ID)) +
+  # first variable
+  geom_line(aes(y=TMS.mean, colour="red")) +
+  geom_point(aes(y=TMS.mean, colour="red")) +
+  # second variable
+  geom_line(aes(y=Rumination.mean, color="blue")) +
+  geom_point(aes(y=Rumination.mean, color="blue")) 
+
+#plot a few people
+ggplot(data = EMA[which(EMA$ID <= 106), ],
+       aes(x = TIME, group= factor(ID))) +
+  geom_line(aes(y=TMS.mean),colour="#F27781") +
+  geom_point(aes(y=TMS.mean),colour="#F27781") +
+  facet_wrap(~ID, nrow=5)
+
+#plot a few people with 2 variables 
+cols <- c("TMS"="#F27781", "Rumination"="#18298C", "Stress"= "blue","PWB"= "green", "Depression"= "yellow", "Sleep"= "black", "Physical Activity"= "brown" )
+ggplot(data = EMA.subset[which(EMA$ID <= 104),  ],
+       aes(x = TIME2, group= factor(ID))) +
+  geom_line(aes(y=TMS.mean, colour="TMS")) +
+  geom_point(aes(y=TMS.mean, colour="TMS")) +
+  geom_line(aes(y=STRESSOR, color="Stress")) +
+  geom_point(aes(y=STRESSOR, color="Stress")) +
+  geom_line(aes(y=Rumination, color="Rumination")) +
+  geom_point(aes(y=Rumination, color="Rumination")) +
+  geom_line(aes(y=PWB, color="PWB")) +
+  geom_point(aes(y=PWB, color="PWB")) +
+  geom_line(aes(y=PROMIS, color="Depression")) +
+  geom_point(aes(y=PROMIS, color="Depression")) +
+  geom_line(aes(y=SLEEP.mean, color="Sleep")) +
+  geom_point(aes(y=SLEEP.mean, color= "Sleep")) +
+  geom_line(aes(y=PhysicalActivity.mean, color="Physical Activity")) +
+  geom_point(aes(y=PhysicalActivity.mean, color= "Physical Activity")) +
+  facet_wrap(~ID, nrow=5)
+```
+
+
+```{r}
+#mindfulness
+ggplot(data = EMA[which(EMA$ID <= 106), ],
+       aes(x = TIME, group= factor(ID))) +
+  geom_line(aes(y=TMS.mean),colour="#F27781") +
+  geom_point(aes(y=TMS.mean),colour="#F27781") +
+  facet_wrap(~ID, nrow=5)+
+  xlab("Time") + ylab("Mindfulness") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Change in Mindfulness over Time")
+#rumination 
+ggplot(data = EMA[which(EMA$ID <= 106), ],
+       aes(x = TIME, group= factor(ID))) +
+  geom_line(aes(y=Rumination),colour="#F27781") +
+  geom_point(aes(y=Rumination),colour="#F27781") +
+  facet_wrap(~ID, nrow=5)+
+  xlab("Time") + ylab("Rumination") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Change in Rumination over Time")
+#sleep 
+ggplot(data = EMA[which(EMA$ID <= 106), ],
+       aes(x = TIME, group= factor(ID))) +
+  geom_line(aes(y=SLEEP.mean),colour="#F27781") +
+  geom_point(aes(y=SLEEP.mean),colour="#F27781") +
+  facet_wrap(~ID, nrow=5)+
+  xlab("Time") + ylab("Sleep") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Change in Sleep over Time")
+#PA 
+ggplot(data = EMA[which(EMA$ID <= 106), ],
+       aes(x = TIME, group= factor(ID))) +
+  geom_line(aes(y=PhysicalActivity.mean),colour="#F27781") +
+  geom_point(aes(y=PhysicalActivity.mean),colour="#F27781") +
+  facet_wrap(~ID, nrow=5)+
+  xlab("Time") + ylab("Physical Activity") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Change in Physical Activity over Time")
+#Depression 
+ggplot(data = EMA[which(EMA$ID <= 106), ],
+       aes(x = TIME, group= factor(ID))) +
+  geom_line(aes(y=PROMIS),colour="#F27781") +
+  geom_point(aes(y=PROMIS),colour="#F27781") +
+  facet_wrap(~ID, nrow=5)+
+  xlab("Time") + ylab("Depression") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Change in Depression over Time")
+#PWB
+ggplot(data = EMA[which(EMA$ID <= 106), ],
+       aes(x = TIME, group= factor(ID))) +
+  geom_line(aes(y=PWB),colour="#F27781") +
+  geom_point(aes(y=PWB),colour="#F27781") +
+  facet_wrap(~ID, nrow=5)+
+  xlab("Time") + ylab("PWB") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Change in PWB over Time")
+#stress
+ggplot(data = EMA.subset[which(EMA.subset$ID <= 106), ],
+       aes(x = TIME, group= factor(ID))) +
+  geom_line(aes(y=STRESSOR),colour="#F27781") +
+  geom_point(aes(y=STRESSOR),colour="#F27781") +
+  facet_wrap(~ID, nrow=5)+
+  xlab("Time") + ylab("Stress") +
+  theme_classic() +
+  theme(axis.title=element_text(size=12),
+        axis.text=element_text(size=12),
+        plot.title=element_text(size=12, hjust=.5)) +
+  ggtitle("Change in Stress over Time")
+
+```
+
+
+```{r}
+EMA.tx<- subset.data.frame(EMA, GROUP==1)
+EMA.control<- subset.data.frame(EMA, GROUP==0)
+```
+
+```{r}
+#mindfulness change over time between intervention and control
+#running uncentered TMS
+mind.model1 <- lmer(TMS.mean ~ TIME*GROUP + (1 + TIME | ID), data=EMA, REML= TRUE, control=lmerControl(optimizer="bobyqa"))
+summary(mind.model1)
+summ(mind.model1)
+#uncentered curiousity
+mind.model2<- lmer(Curiousity.mean ~ TIME*GROUP + (1 + TIME | ID), data=EMA, REML= TRUE, control=lmerControl(optimizer="bobyqa"))
+summary(mind.model2)
+#uncentered decentering
+mind.model3 <- lmer(Decentering.mean ~ TIME*GROUP + (1 + TIME | ID), data=EMA, REML= TRUE, control=lmerControl(optimizer="bobyqa"))
+summary(mind.model3)
+
+#plot TMS Subscales
+ggplot(data=EMA, aes(x=TIME, y=Curiousity.mean, group=factor(GROUP), colour="gray"), legend=TRUE) +
+  geom_smooth(aes(group=ID), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray") +
+  geom_smooth(data=EMA.control, aes(x=TIME, y=Curiousity.mean), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="blue", show.legend= TRUE) +
+  geom_smooth(data=EMA.tx, aes(x=TIME, y=Curiousity.mean), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red", show.legend= TRUE) +
+  xlab("TIME") + ylab("Mindfulness") +
+  theme_classic() +
+  theme(axis.title=element_text(size=18),
+        axis.text=element_text(size=14),
+        plot.title=element_text(size=18, hjust=.5)) +
+  ggtitle("Within-Person Association\nCuriousity and TIME")
+
+
+ggplot(data=EMA, aes(x=TIME, y=Decentering.mean, group=factor(GROUP), colour="gray"), legend=TRUE) +
+  geom_smooth(aes(group=ID), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=.5, color="gray") +
+  geom_smooth(data=EMA.control, aes(x=TIME, y=Decentering.mean), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="blue") +
+  geom_smooth(data=EMA.tx, aes(x=TIME, y=Decentering.mean), method=lm, se=FALSE, fullrange=FALSE, lty=1, size=2, color="red") +
+  xlab("TIME") + ylab("Mindfulness") +
+  theme_classic() +
+  theme(axis.title=element_text(size=18),
+        axis.text=element_text(size=14),
+        plot.title=element_text(size=18, hjust=.5)) +
+  ggtitle("Within-Person Association\nDecentering and TIME")
+
+#only in tx group
+mind.tx <- lmer(Decentering.mean ~ TIME + (1 + TIME | ID), data=EMA.tx, REML= TRUE, control=lmerControl(optimizer="bobyqa"))
+summary(mind.tx)
+```
+**This shows us that for the intercept the average TMS score was 21.24 for the control group... and the B value for group.mean shows that the intial level (average) for the interention is 21.24 + 0.67 at about 21.93 on day 0. B value DAY2 at 0 shows the control group change in minduflness over time. and the interaction shows how much higher the rate of change is for the treatment group compared to the control group at 0.13... so the intervention group had a 0.13 change in mindfulness over the 5 weeks compared to control group which had 0.** 
+
+**The random component shows that for the random intercept has a SD=4.78 which indivats that 95% of the population vary between +/- 9.56 units of the typical intercept for their group. The slope random component has a SD= 0.14 which shows that 95% of the poplulation nvary between +/- 0.28 units of the typical slope for it's group.**
+
+**The intercepts and slopes covary at -0.19, this means that people that have a lower intercepts so lower TMS subscale scores have a more strongly positive effect of TMS by day. Therefore, the relationship of time on TMS score is more steep or even becomes more strongly positive as you decrease Intial TMS scores. **
+
+```{r}
+#I think just repeat for all the other outcome var (rumination, sleep, exercise, anxiety, stress, well-being, mood)
+#rumination
+rumination.model1 <- lmer(Rumination.mean ~ TIME*GROUP + (1 + DAY2 | ID), data=EMA, REML= TRUE, control=lmerControl(optimizer="bobyqa"))
+summary(rumination.model1)
+#sleep 
+sleep.model1 <- lmer(SLEEP.mean ~ TIME*GROUP + (1 + DAY2 | ID), data=EMA, REML= TRUE, control=lmerControl(optimizer="bobyqa"))
+summary(sleep.model1)
+#exercise 
+exercise.model1 <- lmer(PhysicalActivity.mean ~ TIME*GROUP + (1 + DAY2 | ID), data=EMA, REML= TRUE, control=lmerControl(optimizer="bobyqa"))
+summary(exercise.model1)
+#anxiety and stress
+anxiety.model1 <- lmer(STRESSOR.mean ~ TIME*GROUP + (1 + DAY2 | ID), data=EMA, REML= TRUE, control=lmerControl(optimizer="bobyqa"))
+summary(anxiety.model1)
+#well-being
+PWB.model1 <- lmer(PWB.mean ~ TIME*GROUP + (1 + DAY2 | ID), data=EMA, REML= TRUE, control=lmerControl(optimizer="bobyqa"))
+summary(PWB.model1)
+#mood 
+mood.model1 <- lmer(PROMIS.mean ~ TIME*GROUP + (1 + DAY2 | ID), data=EMA, REML= TRUE, control=lmerControl(optimizer="bobyqa"))
+summary(mood.model1)
+```
+
+```{r} 
+#ICC 
+#level 1== day 
+#level 2== people 
+#level 3== group (control vs intervention)
+
+#get ICC of within a person dependence for mindfulness
+Mindfulness<- lmer(TMS.mean ~ 1 + (1 |ID), data = EMA,REML = TRUE)
+summ(Mindfulness)
+
+#ICC of within group dependence for curiousity
+Curiousity <- lmer(Curiousity.mean ~ 1 + (1 |ID), data = EMA,REML = TRUE)
+summ(Curiousity)
+
+#ICC of within group dependence for decentering
+Decentering <- lmer(Decentering.mean ~ 1 + (1 |ID), data = EMA,REML = TRUE)
+summ(Decentering)
+
+#ICC of within group dependence for stressor
+Stressor <- lmer(STRESSOR.mean ~ 1 + (1 |ID), data = EMA,REML = TRUE)
+summ(Stressor)
+
+#ICC of within group dependence for promis
+Promis <- lmer(PROMIS.mean ~ 1 + (1 |ID), data = EMA,REML = TRUE)
+summ(Promis)
+
+#ICC of within group dependence for well being
+PWB <- lmer(PWB.mean ~ 1 + (1 |ID), data = EMA,REML = TRUE)
+summ(PWB)
+
+#ICC of within group dependence for rumination
+Rumination <- lmer(Rumination.mean ~ 1 + (1 |ID), data = EMA,REML = TRUE)
+summ(Rumination)
+
+#ICC of within group dependence for sleep
+Sleep <- lmer(SLEEP.mean ~ 1 + (1 |ID), data = EMA,REML = TRUE)
+summ(Sleep)
+
+#ICC of within group dependence for PA
+PA <- lmer(PhysicalActivity.mean ~ 1 + (1 |ID), data = EMA,REML = TRUE)
+summ(PA)
+```
+**I ran multiple empty models of time on outcome variables by participant ID, the ICC's for within a person ranged from 0.25-0.74, making the DE range from 30-86.84, therefore, multilevel modelling would be good to do to account for the nesting of the data.** 
+
+
+```{r, run stats INCOMPLETE} 
+#running stats 
+#center variables 
+library(robumeta)
+#EMA$TMS.center <- group.center(EMA$TMS.mean, EMA$ID) 
+#run model of change of TMS over time.
+#Ran.Slopes <- lmer(TMS.mean ~ 1 + (1 |ID), data = EMA,REML = TRUE)
+#summary(Ran.Slopes)
+#summ(Ran.Slopes)
+
+```
+
+
+
+
+
